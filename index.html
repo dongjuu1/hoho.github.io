@@ -42,7 +42,7 @@
       position: fixed;
       bottom: -550px;
       z-index: 1;
-      width: 1000px;
+      width: 900px;
       pointer-events: none;
     }
 
@@ -52,6 +52,11 @@
 
     #standing.right {
       right: -100px;
+    }
+    #standing.ho {
+      right: 200px;
+      bottom: 100px;
+      width: 1500px;
     }
 
     #dialogBox {
@@ -505,7 +510,11 @@
         standingImg.src = line.img;
         standingImg.style.display = 'block';
         standingImg.className = '';
-        standingImg.classList.add(line.align === 'right' ? 'right' : 'left');
+        if (['right', 'left', 'ho'].includes(line.align)) {
+  standingImg.classList.add(line.align);
+} else {
+  standingImg.classList.add('left'); // 기본값 처리
+}
       } else {
         standingImg.style.display = 'none';
       }
