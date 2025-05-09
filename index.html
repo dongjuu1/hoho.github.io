@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>미니게임</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: 'Arial';
+      text-align: center;
+    }
+
+    #game {
+      display: grid;
+      gap: 2px;
+      margin: 20px auto;
+      width: fit-content;
+    }
+
+    .tile {
+      width: 60px;
+      height: 60px;
+      background-color: #444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .player { background: red; color: white; font-weight: bold; }
+    .wall { background: gray; }
+    .rock { background: #666; }
+    .monster { background: green; color: white; }
+    .npc { background: purple; }
+    .spike { background: darkred; }
+    .player-and-spike { background: red; color: darkred; font-weight: bold; }
+    .rock-and-spike { background: #666; color: darkred; }
+    .monster-and-spike { background: green; color: darkred; }
+
+    #standing {
+      position: fixed;
+      bottom: -550px;
+      z-index: 1;
+      width: 1000px;
+      pointer-events: none;
+    }
+
+    #standing.left {
+      left: -100px;
+    }
+
+    #standing.right {
+      right: -100px;
+    }
+
+    #dialogBox {
+      display: none;
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85);
+      border: 2px solid white;
+      padding: 15px 20px;
+      border-radius: 12px;
+      max-width: 90%;
+      width: 500px;
+      font-size: 18px;
+      text-align: left;
+      z-index: 100;
+    }
+
+    #dialogText {
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 101;
+    }
+
+    #nextBtn, .choiceBtn {
+      background: #ff5c8d;
+      color: white;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+      position: relative;
+      z-index: 102;
+    }
+
+    #nextBtn:hover, .choiceBtn:hover {
+      background: #ff79a8;
+    }
+
+    #choices {
+      position: relative;
+      margin-top: 15px;
+      z-index: 102;
+    }
+
+    /* 게임 오버 화면 스타일 */
+    #gameOverScreen {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 200;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #gameOverMessage {
+      font-size: 32px;
+      color: #ff5c8d;
+      margin-bottom: 20px;
+    }
+
+    #gameOverExplanation {
+      font-size: 18px;
+      color: white;
+      margin-bottom: 30px;
+      max-width: 80%;
+      text-align: center;
+    }
+
+    #restartButton {
+      background: #ff5c8d;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    #restartButton:hover {
+      background: #ff79a8;
+    }
+  </style>
+</head>
+<body>
+  <h1>미니게임</h1>
+  <div>남은 턴: <span id="turns">20</span></div>
+  <div id="game"></div>
+
+  <img id="standing" class="left" src="" alt="" style="display:none;">
+  <div id="dialogBox">
+    <div id="dialogText"></div>
+    <button id="nextBtn">다음</button>
+    <div id="choices"></div>
+  </div>
+  
+  <div id="gameOverScreen">
+    <div id="gameOverMessage">게임 오버</div>
+    <div id="gameOverExplanation">남은 턴이 없습니다!</div>
+    <button id="restartButton">스테이지 재시작</button>
+  </div>
+
+  <script>
+    const gameEl = document.getElementById("game");
+    const turnsEl = document.getElementById("turns");
+    const dialogBox = document.getElementById("dialogBox");
+    const dialogText = document.getElementById("dialogText");
+    const nextBtn = document.getElementById("nextBtn");
+    const choicesDiv = document.getElementById("choices");
+    const standingImg = document.getElementById("standing");
+    const gameOverScreen = document.getElementById("gameOverScreen");
+    const gameOverMessage = document.getElementById("gameOverMessage");
+    const gameOverExplanation = document.getElementById("gameOverExplanation");
+    const restartButton = document.getElementById("restartButton");
+
+    let turns = 17;
+    let inDialog = false;
+    let dialogIndex = 0;
+    let dialogLines = [];
+    let hasChoice = false;
+    let currentStage = 1;
+    let currentChoices = [];
+    let gameOver = false;
+
+    const TILE = {
+      EMPTY: 0,
+      WALL: 1,
+      ROCK: 2,
+      PLAYER: 3,
+      NPC: 4,
+      SPIKE: 5,
+      PLAYER_AND_SPIKE: 6,
+      MONSTER: 7,
+      ROCK_AND_SPIKE: 8,
+      MONSTER_AND_SPIKE: 9
+    };
+
+    // 가시 위치를 저장하는 배열 추가
+    let spikePositions = [];
+
+    const map7 = [
+    [1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,3,1,1,1,1,1,1],
+    [1,0,0,0,2,0,1,1,1,1],
+    [1,0,0,1,2,2,0,0,0,1],
+    [1,0,7,0,2,0,7,0,1,1],
+    [1,1,1,1,0,1,4,1,1,1],
+    [1,1,1,1,1,1,1,1,1,1]
+    ];
+
+    const map2 = [
+      [1,1,1,1,1,1,1],
+      [1,0,1,4,1,0,1],
+      [1,0,0,2,0,0,1],
+      [1,3,0,0,0,0,1],
+      [1,1,1,1,1,1,1],
+    ];
+
+    const map2_ = [
+      [1,1,1,1,1,1,1],
+      [1,0,1,4,1,0,1],
+      [1,0,0,2,0,0,1],
+      [1,3,0,0,0,0,1],
+      [1,1,1,1,1,1,1],
+    ];
+
+    const map3 = [
+      [1,1,1,1,1,1,1],
+      [1,1,1,4,1,5,1],
+      [1,1,1,5,5,5,1],
+      [1,3,5,5,5,5,1],
+      [1,1,1,1,1,1,1],
+    ];
+    const map3_ = [
+      [1,1,1,1,1,1,1],
+      [1,1,1,4,1,5,1],
+      [1,1,1,5,5,5,1],
+      [1,3,5,5,5,5,1],
+      [1,1,1,1,1,1,1],
+    ];
+
+    // 몬스터가 있는 맵 추가
+    const map4 = [
+      [1,1,1,1,1,1,1],
+      [1,0,7,4,7,0,1],
+      [1,0,5,2,5,0,1],
+      [1,3,0,0,0,0,1],
+      [1,1,1,1,1,1,1],
+    ];
+
+    const map5 = [
+    [1,1,1,1,1,1,1,1],
+    [1,1,3,0,5,1,4,1],
+    [1,1,1,2,5,1,0,1],
+    [1,0,0,5,0,2,0,1],
+    [1,1,0,1,1,1,0,1],
+    [1,1,0,0,5,0,0,1],
+    [1,1,1,1,1,1,1,1]
+    ];
+
+    const map6 = 
+    [
+    [1,1,1,1,1,1,1],
+    [1,3,1,4,1,0,1],
+    [1,0,7,7,7,0,1],
+    [1,0,7,0,7,0,1],
+    [1,0,0,2,0,0,1],
+    [1,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1]
+    ];
+    const map1 = 
+    [
+    [1,1,1],
+      [1,4,1],
+      [1,0,1],
+      [1,0,1],
+      [1,3,1],
+      [1,1,1]
+    ];
+    
+
+    let map = map1;
+
+    // 맵을 로드할 때 가시 위치 저장
+    function loadSpikePositions() {
+      spikePositions = [];
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[0].length; x++) {
+          if (map[y][x] === TILE.SPIKE || 
+              map[y][x] === TILE.PLAYER_AND_SPIKE || 
+              map[y][x] === TILE.ROCK_AND_SPIKE || 
+              map[y][x] === TILE.MONSTER_AND_SPIKE) {
+            spikePositions.push({x, y});
+          }
+        }
+      }
+    }
+
+    // 각 스테이지별 선택지 데이터 정의
+    const choicesData = {
+      4: [
+        { id: 'with', text: '저 그냥 집에 갈래요.' },
+        { id: 'alone', text: '... 가죠.' }
+      ],
+      // 다른 스테이지의 선택지를 추가할 수 있습니다
+      5: [
+        { id: 'fight', text: '싸운다' },
+        { id: 'run', text: '도망간다' }
+      ],
+      6: [
+        { id: 'help', text: '도와준다' },
+        { id: 'ignore', text: '무시한다' }
+      ]
+    };
+
+    const dialogFollowUps = {
+      4: {
+        with: [
+        { speaker: "가로수", text: "...", img: "static/image/g2.png", align: "left" },
+        { speaker: "가로수", text: "그러시던죠.", img: "static/image/g3.png", align: "left" },
+        { speaker: "한재령", text: "아, 아니예요. 계속 가봐요!", img: "static/image/j2.png", align: "right" },
+        ],
+        alone: [
+            { speaker: "가로수", text: "좋습니다. 이제 앞으로 3길만 더 가면 됩니다. 그럼 모쪼록 조심하시길.", img: "static/image/g3.png", align: "left" }
+        ]
+      },
+      // 다른 스테이지의 후속 대화를 추가할 수 있습니다
+      5: {
+        fight: [
+          { speaker: "한재령", text: "싸움을 선택했군요!", img: "static/image/j2.png", align: "right" },
+          { speaker: "가로수", text: "멋진 선택입니다.", img: "static/image/g1.png", align: "left" }
+        ],
+        run: [
+          { speaker: "한재령", text: "도망치기를 선택했군요!", img: "static/image/j2.png", align: "right" },
+          { speaker: "가로수", text: "전략적인 선택입니다.", img: "static/image/g2.png", align: "left" }
+        ]
+      }
+    };
+
+    const dialogData = {
+      0: {
+        npcPosition: { x: 5, y: 1 },
+        lines: [
+          { speaker: "한재령", text: "오 선배 길이 나타났어요!", img: "static/image/j1.png", align: "right" },
+          { speaker: "가로수", text: "제가 아는 길입니다. 간단하게 시작합시다.", img: "static/image/g3.png", align: "left" },
+          { speaker: "가로수", text: "앞, 뒤 오른쪽 왼쪽.. 이런 식으로 움직이시면 됩니다.", img: "static/image/g3.png", align: "left" },
+          { speaker: "가로수", text: "지옥 문지기(헬테이커)라는 놀이 아시는지요.", img: "static/image/g3.png", align: "left" },
+          { speaker: "한재령", text: "일단 가보죠!", img: "static/image/j1.png", align: "right" }
+        ],
+        choice: false
+      },
+      1: {
+        npcPosition: { x: 1, y: 1 },
+        lines: [
+          { speaker: "한재령", text: "저 잘 왔습니까!", img: "static/image/j2.png", align: "right" },
+          { speaker: "가로수", text: "예... 아, 아마도.", img: "static/image/g3.png", align: "left" },
+          { speaker: "가로수", text: "다음은 앞에 돌이 있습니다. o로 표시되어 있으며 밀 수 있으니 시도 해보십쇼.", img: "static/image/g3.png", align: "left" },
+        ],
+        choice: false
+      },
+      2: {
+        npcPosition: { x: 3, y: 1 },
+        lines: [
+           { speaker: "가로수", text: "이제 가시가 있습니다.", img: "static/image/g3.png", align: "left" },
+           { speaker: "가로수", text: "가시 위로 넘어가면 이동횟수가 2번 소모됩니다. 빨리 지치게 되는 거죠.", img: "static/image/g3.png", align: "left" },
+           { speaker: "한재령", text: "뛰어 넘어 갈 순 없습니까?!", img: "static/image/j2.png", align: "right" },
+           { speaker: "가로수", text: "되겠습니까.", img: "static/image/g1.png", align: "left" },
+        ],
+        choice: false
+      },
+      3: {
+        npcPosition: { x: 3, y: 1 },
+        lines: [
+          { speaker: "가로수", text: "마지막으로 요괴가 있습니다. 요괴는 M으로 표시되며 요괴는 이동을 하며 밀 수 있습니다.", img: "static/image/g3.png", align: "left" },
+          { speaker: "가로수", text: "요괴를 밀면 한 칸 움직이고, 그 쪽은 그 자리에서 한 번 쉬어갑니다.", img: "static/image/g3.png", align: "left" },
+          { speaker: "가로수", text: "요괴와 돌은 모두 가시 위로 넘어 갈 수 있으니 편하게 움직이시면 될 듯합니다.", img: "static/image/g3.png", align: "left" }
+        ],
+        choice: false
+      },
+      4: {
+        npcPosition: { x: 3, y: 1 },
+        lines: [
+        { speaker: "한재령", text: "와! 끝이다. 끝이죠?!", img: "static/image/j2.png", align: "right" },
+        { speaker: "가로수", text: "아직 좀 남았습니다.", img: "static/image/g2.png", align: "left" },
+        ],
+        choice: true
+      },
+      5: {
+        npcPosition: { x: 6, y: 1 },
+        lines: [
+        { speaker: "한재령", text: "생각보다 할 만하네요!", img: "static/image/j1.png", align: "right" }
+        ],
+        choice: false
+      },
+      6: {
+        npcPosition: { x: 3, y: 1 },
+        lines: [
+        { speaker: "가로수", text: "요괴가 많았는데, 제법 잘 따라오시네요.", img: "static/image/g3.png", align: "left" },
+        { speaker: "한재령", text: "제가 누군데요?!", img: "static/image/j3.png", align: "right" },
+        { speaker: "가로수", text: "(반짝반짝 해졌군....)", img: "static/image/g2.png", align: "left" }
+        ],
+        choice: false
+      },
+      6: {
+        npcPosition: { x: 3, y: 1 },
+        lines: [
+        { speaker: "한재령", text: "이제 끝?!", img: "static/image/j2.png", align: "right" },
+        { speaker: "가로수", text: "(반짝반짝 해졌군....)", img: "static/image/g2.png", align: "left" }
+        { speaker: "가로수", text: "마지막 입니다. 마지막까지 힘내주십쇼.", img: "static/image/g3.png", align: "left" }
+        ],
+        choice: false
+      },
+      6: {
+        npcPosition: { x: 6, y: 8 },
+        lines: [
+        { speaker: "한재령", text: "끝이다! 도착했어요!", img: "static/image/j2.png", align: "right" },
+        { speaker: "가로수", text: "... 올라오기까지 어떠셨습니까.", img: "static/image/g2.png", align: "left" },
+        { speaker: "한재령", text: "음~...", img: "static/image/j1.png", align: "right" },
+        { speaker: "한재령", text: "이래저래?!", img: "static/image/j2.png", align: "right" },
+        ],
+        choice: false
+      }
+    };
+
+    function isSpike(x, y) {
+      // 주어진 위치가 가시 위치인지 확인
+      return spikePositions.some(pos => pos.x === x && pos.y === y);
+    }
+
+    function draw() {
+      const rows = map.length;
+      const cols = map[0].length;
+      gameEl.style.gridTemplateColumns = `repeat(${cols}, 60px)`;
+      gameEl.innerHTML = '';
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+
+          const tileType = map[y][x];
+
+          switch(tileType) {
+            case TILE.WALL: 
+              tile.classList.add('wall'); 
+              break;
+            case TILE.ROCK: 
+              tile.classList.add('rock'); 
+              tile.textContent = 'O'; 
+              break;
+            case TILE.PLAYER: 
+              tile.classList.add('player'); 
+              tile.textContent = 'P'; 
+              break;
+            case TILE.NPC: 
+              tile.classList.add('npc'); 
+              tile.textContent = '♥'; 
+              break;
+            case TILE.SPIKE: 
+              tile.classList.add('spike'); 
+              tile.textContent = '^'; 
+              break;
+            case TILE.PLAYER_AND_SPIKE: 
+              tile.classList.add('player-and-spike'); 
+              tile.textContent = 'P^'; 
+              break;
+            case TILE.MONSTER:
+              tile.classList.add('monster');
+              tile.textContent = 'M';
+              break;
+            case TILE.ROCK_AND_SPIKE:
+              tile.classList.add('rock-and-spike');
+              tile.textContent = 'O^';
+              break;
+            case TILE.MONSTER_AND_SPIKE:
+              tile.classList.add('monster-and-spike');
+              tile.textContent = 'M^';
+              break;
+          }
+
+          gameEl.appendChild(tile);
+        }
+
+      }
+      turnsEl.textContent = turns;
+    }
+
+    function findPlayer() {
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[0].length; x++) {
+          if (map[y][x] === TILE.PLAYER || map[y][x] === TILE.PLAYER_AND_SPIKE) return { x, y };
+        }
+      }
+    }
+
+    function triggerNpcDialog(x, y) {
+      const data = dialogData[currentStage];
+      if (data && data.npcPosition.x === x && data.npcPosition.y === y) {
+        startDialog(data.lines, data.choice);
+        return true;
+      }
+      return false;
+    }
+
+    function showDialogLine(line) {
+      dialogText.innerHTML = `<b>${line.speaker}</b>: ${line.text}`;
+      
+      if (line.img) {
+        standingImg.src = line.img;
+        standingImg.style.display = 'block';
+        standingImg.className = '';
+        standingImg.classList.add(line.align === 'right' ? 'right' : 'left');
+      } else {
+        standingImg.style.display = 'none';
+      }
+    }
+
+    function startGame() {
+      // 맵 로드 시 가시 위치 저장
+      loadSpikePositions();
+      // 게임 시작 시 대화 출력
+      startDialog(dialogData[0].lines, dialogData[0].choice);
+    }
+
+
+    let maaap = null;
+    function startDialog(lines, choice = false) {
+      inDialog = true;
+      dialogIndex = 0;
+      dialogLines = lines;
+      hasChoice = choice;
+      dialogBox.style.display = 'block';
+      nextBtn.style.display = 'inline-block';
+      choicesDiv.style.display = 'none';
+      showDialogLine(lines[dialogIndex]);
+    }
+
+    function advanceDialog() {
+      dialogIndex++;
+      if (dialogIndex < dialogLines.length) {
+        showDialogLine(dialogLines[dialogIndex]);
+
+        if (hasChoice && dialogIndex === dialogLines.length - 1) {
+          // 현재 스테이지에 맞는 선택지 표시
+          displayChoices();
+        }
+      } else {
+        endDialog();
+      }
+    }
+
+    // 현재 스테이지에 맞는 선택지 표시 함수
+    function displayChoices() {
+      nextBtn.style.display = 'none';
+      choicesDiv.style.display = 'block';
+      choicesDiv.innerHTML = ''; // 기존 버튼 제거
+      
+      // 현재 스테이지에 맞는 선택지 가져오기
+      currentChoices = choicesData[currentStage] || [];
+      
+      // 선택지 버튼 생성
+      currentChoices.forEach(choice => {
+        const button = document.createElement('button');
+        button.className = 'choiceBtn';
+        button.textContent = choice.text;
+        button.onclick = () => chooseOption(choice.id);
+        choicesDiv.appendChild(button);
+      });
+    }
+
+    function chooseOption(choice) {
+      choicesDiv.style.display = "none";
+
+      console.log("현재 stage:", currentStage);
+      console.log("선택한 옵션:", choice);
+
+      // "dgg" 선택지 처리 (게임 오버)
+      if (choice === 'dgg') {
+        showGameOver("위험한 선택을 했습니다!", "위험한 선택으로 게임이 종료되었습니다. 다시 시도해보세요.");
+        return;
+      }
+
+      const stageData = dialogFollowUps[currentStage];
+      if (!stageData) {
+        console.error(`dialogFollowUps에 stage ${currentStage}에 대한 정보가 없음`);
+        return;
+      }
+
+      const followUp = stageData[choice];
+      if (!followUp) {
+        console.error(`선택지 '${choice}'에 대한 대사가 없음`);
+        return;
+      }
+
+      startDialog(followUp, false);
+    }
+
+    let h = 0;
+    function endDialog() {
+      h += 1;
+      inDialog = false;
+      dialogBox.style.display = 'none';
+      hasChoice = false;
+      choicesDiv.style.display = 'none';
+      standingImg.style.display = 'none';
+
+      if (h === 2) {
+        currentStage = 2;
+        maaap = JSON.parse(JSON.stringify(map2));
+        map = map2;
+        turns = 20;
+        loadSpikePositions();
+        draw();
+      }
+      else if(h == 3) {
+        currentStage = 3;
+        maaap = JSON.parse(JSON.stringify(map3));
+        map = map3;
+        turns = 20;
+        loadSpikePositions();
+        draw();
+      }
+      else if(h == 4) { // 두 번째 선택 후
+        currentStage = 4;
+        
+        maaap = JSON.parse(JSON.stringify(map4));
+        map = map4;
+        turns = 20;
+        loadSpikePositions();
+        draw();
+      }else if(h == 5) { // 두 번째 선택 후
+        currentStage = 5;
+        
+        maaap = JSON.parse(JSON.stringify(map5));
+        map = map5;
+        turns = 19;
+        loadSpikePositions();
+        draw();
+      }else if(h == 6) { // 두 번째 선택 후
+        currentStage = 6;
+        
+        maaap = JSON.parse(JSON.stringify(map6));
+        map = map6;
+        turns = 26;
+        loadSpikePositions();
+        draw();
+      }else if(h == 7) { // 두 번째 선택 후
+        currentStage = 7;
+        
+        maaap = JSON.parse(JSON.stringify(map7));
+        map = map7;
+        turns = 17;
+        loadSpikePositions();
+        draw();
+      }
+    }
+
+    function pushMonster(x, y, dx, dy, fromSpike = false) {
+      const nx = x + dx;
+      const ny = y + dy;
+      
+      // 몬스터가 벽에 부딪히면 사라짐
+      if (map[ny][nx] === TILE.WALL) {
+        // 몬스터가 가시 위에 있으면 가시로 변경, 아니면 빈 공간으로 변경
+        if (isSpike(x, y)) {
+          map[y][x] = TILE.SPIKE;
+        } else {
+          map[y][x] = TILE.EMPTY;
+        }
+        return { moved: true, extraCost: fromSpike ? 1 : 0 }; // 가시 위에서 밀면 추가 턴 소모
+      }
+      if (map[ny][nx] === TILE.ROCK) {
+        // 몬스터가 가시 위에 있으면 가시로 변경, 아니면 빈 공간으로 변경
+        if (isSpike(x, y)) {
+          map[y][x] = TILE.SPIKE;
+        } else {
+          map[y][x] = TILE.EMPTY;
+        }
+        return { moved: true, extraCost: fromSpike ? 1 : 0 }; // 가시 위에서 밀면 추가 턴 소모
+      }
+      
+      // 이동할 곳이 빈 공간이거나 가시인 경우
+      if (map[ny][nx] === TILE.EMPTY || map[ny][nx] === TILE.SPIKE) {
+        // 이동할 곳이 가시면 몬스터와 가시가 겹친 타일로 변경
+        if (map[ny][nx] === TILE.SPIKE) {
+          map[ny][nx] = TILE.MONSTER_AND_SPIKE;
+        } else {
+          map[ny][nx] = TILE.MONSTER;
+        }
+        
+        // 몬스터가 원래 있던 자리에 가시가 있었는지 확인
+        if (isSpike(x, y)) {
+          map[y][x] = TILE.SPIKE;
+        } else {
+          map[y][x] = TILE.EMPTY;
+        }
+        return { moved: true, extraCost: fromSpike ? 1 : 0 }; // 가시 위에서 밀면 추가 턴 소모
+      }
+      
+      return { moved: false, extraCost: 0 }; // 몬스터를 밀지 못함
+    }
+
+    function move(dx, dy) {
+      if (gameOver || inDialog) return;
+      if (turns <= 0) {
+        showGameOver("턴 소진!", "남은 턴이 없습니다. 다시 시도해보세요.");
+        return;
+      }
+
+      const { x, y } = findPlayer();
+      const nx = x + dx;
+      const ny = y + dy;
+
+      if (map[ny][nx] === TILE.WALL) return;
+
+      if (map[ny][nx] === TILE.ROCK || map[ny][nx] === TILE.ROCK_AND_SPIKE) {
+        const nnx = nx + dx;
+        const nny = ny + dy;
+        if (map[nny][nnx] === TILE.EMPTY || map[nny][nnx] === TILE.SPIKE) {
+          // 돌이 이동할 곳이 가시인 경우
+          if (map[nny][nnx] === TILE.SPIKE) {
+            map[nny][nnx] = TILE.ROCK_AND_SPIKE;
+          } else {
+            map[nny][nnx] = TILE.ROCK;
+          }
+          
+          // 플레이어가 이동할 위치에 가시 체크
+          if (isSpike(nx, ny)) {
+            map[ny][nx] = TILE.PLAYER_AND_SPIKE;
+          } else {
+            map[ny][nx] = TILE.PLAYER;
+          }
+          
+          // 플레이어가 원래 있던 위치에 가시가 있었는지 확인
+          if (isSpike(x, y)) {
+            map[y][x] = TILE.SPIKE;
+          } else {
+            map[y][x] = TILE.EMPTY;
+          }
+          
+          turns--;
+        }
+      }
+      // 몬스터 처리
+      else if (map[ny][nx] === TILE.MONSTER || map[ny][nx] === TILE.MONSTER_AND_SPIKE) {
+        if (pushMonster(nx, ny, dx, dy)) {
+          // 몬스터가 이동했으면 턴 소비 (플레이어는 이동하지 않음)
+          turns--;
+          draw();
+        }
+      }
+      else if ([TILE.EMPTY, TILE.SPIKE, TILE.NPC].includes(map[ny][nx])) {
+        if (map[ny][nx] === TILE.SPIKE) {
+          turns -= 1; // 가시 위에 서면 턴 감소
+        }
+
+        if (map[ny][nx] === TILE.NPC) {
+          if (!triggerNpcDialog(nx, ny)) return;
+        }
+
+        // 플레이어가 새 위치로 이동
+        if (map[ny][nx] === TILE.SPIKE) {
+          map[ny][nx] = TILE.PLAYER_AND_SPIKE;
+        } else {
+          map[ny][nx] = TILE.PLAYER;
+        }
+
+        // 플레이어가 원래 있던 위치에 가시가 있었는지 확인
+        if (isSpike(x, y)) {
+          map[y][x] = TILE.SPIKE;
+        } else {
+          map[y][x] = TILE.EMPTY;
+        }
+
+        turns--;
+      }
+
+      draw();
+      
+      // 턴이 소진되었는지 확인
+      if (turns <= 0) {
+        showGameOver("턴 소진!", "남은 턴이 없습니다. 다시 시도해보세요.");
+      }
+    }
+
+    document.addEventListener('keydown', e => {
+      if (inDialog && e.key === 'Enter') {
+        advanceDialog();
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowUp': move(0, -1); break;
+        case 'ArrowDown': move(0, 1); break;
+        case 'ArrowLeft': move(-1, 0); break;
+        case 'ArrowRight': move(1, 0); break;
+      }
+    });
+
+    // 게임 오버 화면 표시 함수
+    function showGameOver(message, explanation) {
+      gameOver = true;
+      gameOverMessage.textContent = message;
+      gameOverExplanation.textContent = explanation;
+      gameOverScreen.style.display = 'flex';
+    }
+    
+    // 현재 스테이지 재시작 함수
+    function restartStage() {
+      gameOver = false;
+      gameOverScreen.style.display = 'none';
+      
+      // 현재 스테이지에 맞는 맵 설정
+      switch(currentStage) {
+        case 1:
+          map = JSON.parse(JSON.stringify(maaap));
+          break;
+        case 2:
+          map = JSON.parse(JSON.stringify(maaap));
+          break;
+        case 3:
+          map = JSON.parse(JSON.stringify(maaap));
+          break;
+        case 4:
+          map = JSON.parse(JSON.stringify(maaap));
+          break;
+        default:
+          map =  JSON.parse(JSON.stringify(maaap));
+          break;
+      }
+      
+      if (currentStage== 5){
+        turns = 19;
+      }
+      else if (currentStage== 6){
+        turns = 26;
+      }
+      else if (currentStage== 7){
+        turns = 17;
+      }
+      else{
+        turns = 20;
+      }
+
+      loadSpikePositions();
+      draw();
+    }
+
+    nextBtn.addEventListener('click', advanceDialog);
+    restartButton.addEventListener('click', restartStage);
+    
+    window.onload = function() {
+      startGame();
+    };
+    draw();
+  </script>
+</body>
+</html>
